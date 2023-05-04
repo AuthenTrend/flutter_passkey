@@ -4,7 +4,7 @@ A Flutter plugin for Passkey.
 
 | Android | iOS | MacOS | Web | Linux | Windows |
 | :-----: | :-: | :---: | :-: | :---: | :-----: |
-|   V    | V  |  X   | X  |  X   |   X    |
+|    V    |  V  |   X   |  X  |   X   |    X    |
 
 ## Usage
 
@@ -35,3 +35,6 @@ flutterPasskeyPlugin.getCredential(requestOptions).then((response) {
 ```
 
 See the example app for more complex examples.
+
+## Learn more
+- https://github.com/AuthenTrend/rp-app-example

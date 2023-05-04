@@ -4,10 +4,10 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_passkey'
-  s.version          = '1.0.1'
+  s.version          = '1.0.2'
   s.summary          = 'A Flutter plugin for Passkey.'
   s.description      = <<-DESC
-A Flutter plugin for Passkey.
+Flutter plugin for using Passkey easily.
                        DESC
   s.homepage         = 'https://github.com/AuthenTrend/flutter_passkey'
   s.license          = { :file => '../LICENSE' }

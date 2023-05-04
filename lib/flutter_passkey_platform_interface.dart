@@ -28,10 +28,12 @@ abstract class FlutterPasskeyPlatform extends PlatformInterface {
   }
 
   Future<String?> createCredential(String options) {
-    throw UnimplementedError('createCredential(String options) has not been implemented.');
+    throw UnimplementedError(
+        'createCredential(String options) has not been implemented.');
   }
 
   Future<String?> getCredential(String options) {
-    throw UnimplementedError('getCredential(String options) has not been implemented.');
+    throw UnimplementedError(
+        'getCredential(String options) has not been implemented.');
   }
 }
