@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
+import 'package:flutter_passkey/models/passkey_request/passkey_request.dart';
+import 'package:flutter_passkey/models/passkey_response/passkey_response.dart';
 
 import 'flutter_passkey_platform_interface.dart';
 
@@ -35,14 +39,14 @@ class FlutterPasskey {
     return response;
   }
 
-  Future<String> getCredential(String options) async {
-    final response =
-        await FlutterPasskeyPlatform.instance.getCredential(options);
+  Future<PassKeyResponse> getCredential(PassKeyRequest passKeyRequest) async {
+    final response = await FlutterPasskeyPlatform.instance
+        .getCredential(jsonEncode(passKeyRequest.toJson()));
     if (response == null) {
       throw PlatformException(
           code: "null-response",
           message: "Unable to get response from Passkey.");
     }
-    return response;
+    return PassKeyResponse.fromJson(json.decode(response));
   }
 }

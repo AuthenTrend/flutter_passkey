@@ -1,3 +1,5 @@
+import 'package:flutter_passkey/models/allowed_credential/allowed_credential.dart';
+import 'package:flutter_passkey/models/passkey_request/passkey_request.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_passkey/flutter_passkey.dart';
 import 'package:flutter_passkey/flutter_passkey_platform_interface.dart';
@@ -7,7 +9,6 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 class MockFlutterPasskeyPlatform
     with MockPlatformInterfaceMixin
     implements FlutterPasskeyPlatform {
-
   @override
   Future<String?> getPlatformVersion() => Future.value("Android 13");
 
@@ -19,7 +20,8 @@ class MockFlutterPasskeyPlatform
 }
 
 void main() {
-  final FlutterPasskeyPlatform initialPlatform = FlutterPasskeyPlatform.instance;
+  final FlutterPasskeyPlatform initialPlatform =
+      FlutterPasskeyPlatform.instance;
 
   test('$MethodChannelFlutterPasskey is the default instance', () {
     expect(initialPlatform, isInstanceOf<MethodChannelFlutterPasskey>());
@@ -46,6 +48,18 @@ void main() {
     MockFlutterPasskeyPlatform fakePlatform = MockFlutterPasskeyPlatform();
     FlutterPasskeyPlatform.instance = fakePlatform;
 
-    expect(await flutterPasskeyPlugin.getCredential(""), "");
+    expect(
+      await flutterPasskeyPlugin.getCredential(
+        const PassKeyRequest(
+          challenge: 'challenge',
+          sessionId: 'sessionId',
+          rpId: 'rpId',
+          allowedCredentials: [
+            AllowedCredential(id: 'id', type: 'type'),
+          ],
+        ),
+      ),
+      "",
+    );
   });
 }

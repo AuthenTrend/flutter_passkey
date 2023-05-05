@@ -1,6 +1,7 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_passkey/flutter_passkey.dart';
+import 'package:flutter_passkey/models/allowed_credential/allowed_credential.dart';
+import 'package:flutter_passkey/models/passkey_request/passkey_request.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,15 +23,24 @@ class _MyAppState extends State<MyApp> {
     return '';
   }
 
-  String _getCredentialRequestOptions() {
+  PassKeyRequest _getCredentialRequestOptions() {
     // Obtain this from the server
-    return '';
+    return const PassKeyRequest(
+      challenge: 'challenge',
+      sessionId: 'sessionId',
+      rpId: 'rpId',
+      allowedCredentials: [
+        AllowedCredential(id: 'id', type: 'type'),
+      ],
+    );
   }
 
   @override
   void initState() {
     super.initState();
-    _flutterPasskeyPlugin.isSupported().then((value) => setState(() {_isPasskeySupported = value;}));
+    _flutterPasskeyPlugin.isSupported().then((value) => setState(() {
+          _isPasskeySupported = value;
+        }));
   }
 
   @override
@@ -56,7 +66,9 @@ class _MyAppState extends State<MyApp> {
                     FilledButton(
                       onPressed: () {
                         final options = _getCredentialCreationOptions();
-                        _flutterPasskeyPlugin.createCredential(options).then((response) {
+                        _flutterPasskeyPlugin
+                            .createCredential(options)
+                            .then((response) {
                           // Send response to the server
                         }).catchError((error) {
                           // Handle error
@@ -67,7 +79,9 @@ class _MyAppState extends State<MyApp> {
                     FilledButton(
                       onPressed: () {
                         final options = _getCredentialRequestOptions();
-                        _flutterPasskeyPlugin.getCredential(options).then((response) {
+                        _flutterPasskeyPlugin
+                            .getCredential(options)
+                            .then((response) {
                           // Send response to the server
                         }).catchError((error) {
                           // Handle error
