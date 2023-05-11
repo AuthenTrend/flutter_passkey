@@ -21,6 +21,7 @@ import io.flutter.plugin.common.MethodChannel.Result
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.security.InvalidParameterException
+import androidx.credentials.exceptions.publickeycredential.CreatePublicKeyCredentialDomException
 
 /** FlutterPasskeyPlugin */
 class FlutterPasskeyPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, ViewModel() {
@@ -103,7 +104,11 @@ class FlutterPasskeyPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, Vie
               result.success(credential)
             }
             else if (e != null) {
-              result.error(e.javaClass.kotlin.simpleName ?: "Exception", e.message ?: "Exception occurred", null)
+              var exceptionType = e.javaClass.kotlin.simpleName
+              if (e is CreatePublicKeyCredentialDomException) {
+                  exceptionType = e.domError.javaClass.kotlin.simpleName
+              }
+              result.error(exceptionType ?: "Exception", e.message ?: "Exception occurred", null)
             }
             else {
               result.error("Error", "Unknown error", null)
