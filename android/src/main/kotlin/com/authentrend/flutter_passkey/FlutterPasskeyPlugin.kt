@@ -9,6 +9,7 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
 import androidx.credentials.exceptions.CreateCredentialException
+import androidx.credentials.exceptions.publickeycredential.CreatePublicKeyCredentialDomException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -103,7 +104,11 @@ class FlutterPasskeyPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, Vie
               result.success(credential)
             }
             else if (e != null) {
-              result.error(e.javaClass.kotlin.simpleName ?: "Exception", e.message ?: "Exception occurred", null)
+              var exceptionType = e.javaClass.kotlin.simpleName
+              if (e is CreatePublicKeyCredentialDomException) {
+                  exceptionType = "$exceptionType(${e.domError.javaClass.kotlin.simpleName ?: "DomError"})"
+              }
+              result.error(exceptionType ?: "Exception", e.message ?: "Exception occurred", null)
             }
             else {
               result.error("Error", "Unknown error", null)
