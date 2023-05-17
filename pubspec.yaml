@@ -1,6 +1,6 @@
 name: flutter_passkey
 description: Flutter plugin for using Passkey easily on iOS and Android platforms.
-version: 1.0.2
+version: 1.0.3
 homepage: https://github.com/AuthenTrend/flutter_passkey
 
 environment:

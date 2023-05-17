@@ -5,6 +5,13 @@ import AuthenticationServices
 @available(iOS 15.0, *)
 public class FlutterPasskeyPlugin: NSObject, FlutterPlugin {
     
+    enum PluginError: Error {
+        case unknownError
+        case notFound(String)
+        case unknownCredentialType(AnyObject)
+        case excludedCredentialExists
+    }
+    
     class AuthCtrlDelegate: NSObject, ASAuthorizationControllerDelegate {
         private let semaphore = DispatchSemaphore(value: 0)
         private var result: (controller: ASAuthorizationController, authorization: ASAuthorization?, error: Error?)?
@@ -12,14 +19,12 @@ public class FlutterPasskeyPlugin: NSObject, FlutterPlugin {
         func getResult() throws -> (controller: ASAuthorizationController, authorization: ASAuthorization?, error: Error?) {
             semaphore.wait()
             guard let ret = result else {
-                throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1000, userInfo: [NSLocalizedDescriptionKey: "Unknown error"])
+                throw PluginError.unknownError
             }
             return ret
         }
         
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-            // let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration
-            // let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion
             result = (controller, authorization, nil)
             semaphore.signal()
         }
@@ -34,32 +39,132 @@ public class FlutterPasskeyPlugin: NSObject, FlutterPlugin {
         return "iOS " + UIDevice.current.systemVersion
     }
     
-    private func requestCredential(_ options: String, _ isCreation: Bool) throws -> String {
-        guard let jsonObj = options.jsonObject else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1002, userInfo: [NSLocalizedDescriptionKey: "Options not found"])
+    private func getPlatformPublicKeyCredentials() -> [String] {
+        return (UserDefaults.standard.object(forKey: "platformPublicKeyCredentials") as? [String]) ?? []
+    }
+    
+    private func savePlatformPublicKeyCredential(_ credential: ASAuthorizationCredential) {
+        var credentialID = ""
+        if let credential = credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration {
+            credentialID = credential.credentialID.base64url
         }
-        guard let challengeStr = jsonObj["challenge"] as? String, let challenge = challengeStr.base64urlDecoded else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1005, userInfo: [NSLocalizedDescriptionKey: "Challenge not found"])
+        else if let credential = credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion {
+            credentialID = credential.credentialID.base64url
         }
-        var rpId = ""
-        if let rpObj = jsonObj["rp"] as? [String: Any], let id = rpObj["id"] as? String { rpId = id }
-        if let id = jsonObj["rpId"] as? String { rpId = id }
-        if rpId.isEmpty {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1003, userInfo: [NSLocalizedDescriptionKey: "RP id not found"])
-        }
+        if credentialID.isEmpty { return }
         
-        var platformKeyRequest: ASAuthorizationRequest
-        let platformProvider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpId)
-        if isCreation {
-            guard let userObj = jsonObj["user"] as? [String: Any], let id = userObj["id"] as? String, let userName = userObj["name"] as? String, let userId = id.data(using: .utf8) else {
-                throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1004, userInfo: [NSLocalizedDescriptionKey: "User id or name not found"])
+        var credentials = getPlatformPublicKeyCredentials()
+        if !credentials.contains(credentialID) {
+            credentials.append(credentialID)
+            UserDefaults.standard.set(credentials, forKey: "platformPublicKeyCredentials")
+        }
+    }
+    
+    private func handlePlatformExcludedCredentials(_ options: PublicKeyCredentialRequestOptions) throws {
+        let excludeCredentials = options.excludeCredentials
+        guard excludeCredentials.count > 0 else { return }
+        let credentials = getPlatformPublicKeyCredentials()
+        for credential in credentials {
+            for excludeCredential in excludeCredentials {
+                if excludeCredential.base64url == credential {
+                    throw PluginError.excludedCredentialExists
+                }
             }
-            platformKeyRequest = platformProvider.createCredentialRegistrationRequest(challenge: challenge, name: userName, userID: userId)
         }
-        else {
-            platformKeyRequest = platformProvider.createCredentialAssertionRequest(challenge: challenge)
+    }
+    
+    private func findPlatformCredentials(_ credentials: [Data]) -> [Data] {
+        guard credentials.count > 0 else { return [] }
+        var foundCredentials: [Data] = []
+        let platformCredentials = getPlatformPublicKeyCredentials()
+        for credential in credentials {
+            for platformCredential in platformCredentials {
+                if credential.base64url == platformCredential {
+                    foundCredentials.append(credential)
+                    break
+                }
+            }
         }
-        
+        return foundCredentials
+    }
+    
+    private func createPlatformPublicKeyCredentialRegistrationRequest(_ options: PublicKeyCredentialRequestOptions) throws -> ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest {
+        let rpId = try options.rpId
+        let challenge = try options.challenge
+        let userName = try options.userName
+        let userId = try options.userId
+        let platformProvider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpId)
+        let registrationRequest = platformProvider.createCredentialRegistrationRequest(challenge: challenge, name: userName, userID: userId)
+        /*// Passkeys do not support attestation.
+        if let attestationPreference = options.attestation {
+            registrationRequest.attestationPreference = attestationPreference
+        }
+        */
+        if let userVerificationPreference = options.userVerification {
+            registrationRequest.userVerificationPreference = userVerificationPreference
+        }
+        // ISSUE: Currently ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest doesn't support excludedCredentials.
+        // WORKAROUND: Handling excludeCredentials by plugin self.
+        try handlePlatformExcludedCredentials(options)
+        return registrationRequest
+    }
+    
+    private func createSecurityKeyPublicKeyCredentialRegistrationRequest(_ options: PublicKeyCredentialRequestOptions) throws -> ASAuthorizationSecurityKeyPublicKeyCredentialRegistrationRequest {
+        let rpId = try options.rpId
+        let challenge = try options.challenge
+        let userName = try options.userName
+        let userId = try options.userId
+        let securityKeyProvider = ASAuthorizationSecurityKeyPublicKeyCredentialProvider(relyingPartyIdentifier: rpId)
+        let registrationRequest = securityKeyProvider.createCredentialRegistrationRequest(challenge: challenge, displayName: userName, name: userName, userID: userId)
+        registrationRequest.credentialParameters = options.pubKeyCredParams
+        if let attestationPreference = options.attestation {
+            registrationRequest.attestationPreference = attestationPreference
+        }
+        if let userVerificationPreference = options.userVerification {
+            registrationRequest.userVerificationPreference = userVerificationPreference
+        }
+        if let residentKeyPreference = options.residentKey {
+            registrationRequest.residentKeyPreference = residentKeyPreference
+        }
+        let excludedCredentials = options.excludeCredentials
+        if excludedCredentials.count > 0 {
+            registrationRequest.excludedCredentials = excludedCredentials.map { ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor(credentialID: $0, transports: ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor.Transport.allSupported) }
+        }
+        return registrationRequest
+    }
+    
+    private func createPlatformPublicKeyCredentialAssertionRequest(_ options: PublicKeyCredentialRequestOptions) throws -> ASAuthorizationPlatformPublicKeyCredentialAssertionRequest {
+        let rpId = try options.rpId
+        let challenge = try options.challenge
+        let platformProvider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpId)
+        let assertionRequest = platformProvider.createCredentialAssertionRequest(challenge: challenge)
+        if let userVerificationPreference = options.userVerification {
+            assertionRequest.userVerificationPreference = userVerificationPreference
+        }
+        let allowedCredentials = options.allowCredentials
+        // ISSUE: if allowedCredentials are different from SecurityKeyPublicKeyCredentialAssertionRequest, iOS Passkeys will hang on processing in background.
+        if allowedCredentials.count > 0 {
+            assertionRequest.allowedCredentials = allowedCredentials.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        }
+        return assertionRequest
+    }
+    
+    private func createSecurityKeyPublicKeyCredentialAssertionRequest(_ options: PublicKeyCredentialRequestOptions) throws -> ASAuthorizationSecurityKeyPublicKeyCredentialAssertionRequest {
+        let rpId = try options.rpId
+        let challenge = try options.challenge
+        let securityKeyProvider = ASAuthorizationSecurityKeyPublicKeyCredentialProvider(relyingPartyIdentifier: rpId)
+        let assertionRequest = securityKeyProvider.createCredentialAssertionRequest(challenge: challenge)
+        if let userVerificationPreference = options.userVerification {
+            assertionRequest.userVerificationPreference = userVerificationPreference
+        }
+        let allowedCredentials = options.allowCredentials
+        if allowedCredentials.count > 0 {
+            assertionRequest.allowedCredentials = allowedCredentials.map { ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor(credentialID: $0, transports: ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor.Transport.allSupported) }
+        }
+        return assertionRequest
+    }
+    
+    private func getPresentationContextProvider() throws -> ASAuthorizationControllerPresentationContextProviding {
         let keyWindow = UIApplication.shared.connectedScenes
             .filter({$0.activationState == .foregroundActive})
             .map({$0 as? UIWindowScene})
@@ -67,7 +172,7 @@ public class FlutterPasskeyPlugin: NSObject, FlutterPlugin {
             .first?.windows
             .filter({$0.isKeyWindow}).first
         guard var topController = keyWindow?.rootViewController else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1006, userInfo: [NSLocalizedDescriptionKey: "Root view controller not found"])
+            throw PluginError.notFound("Root view controller")
         }
         while let presentedViewController = topController.presentedViewController {
             topController = presentedViewController
@@ -76,68 +181,133 @@ public class FlutterPasskeyPlugin: NSObject, FlutterPlugin {
             topController = nav.visibleViewController ?? topController
         }
         guard let contextProvider = topController as? ASAuthorizationControllerPresentationContextProviding else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1007, userInfo: [NSLocalizedDescriptionKey: "Presentation context provider not found"])
+            throw PluginError.notFound("Presentation context provider")
         }
-        
-        let authController = ASAuthorizationController(authorizationRequests: [platformKeyRequest])
+        return contextProvider
+    }
+    
+    private func requestCredential(_ authorizationRequests: [ASAuthorizationRequest]) throws -> ASAuthorizationCredential {
+        let authController = ASAuthorizationController(authorizationRequests: authorizationRequests)
         let authCtrlDelete = AuthCtrlDelegate()
+        let contextProvider = try getPresentationContextProvider()
         authController.delegate = authCtrlDelete
         authController.presentationContextProvider = contextProvider
         authController.performRequests()
         
-        var response: [String: Any] = [:]
-        guard let result = try? authCtrlDelete.getResult() else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1000, userInfo: [NSLocalizedDescriptionKey: "Unknown error"])
-        }
-        if let error = result.error {
-            throw error
+        let result = try authCtrlDelete.getResult()
+        guard result.error == nil else {
+            throw result.error!
         }
         guard let authorization = result.authorization else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1008, userInfo: [NSLocalizedDescriptionKey: "Credential not found"])
+            throw PluginError.notFound("Credential")
         }
-        if let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration {
-            response = [
-                "id": credential.credentialID.base64url,
-                "rawId": credential.credentialID.base64url,
-                "type": "public-key",
-                "response": [
-                    "attestationObject": credential.rawAttestationObject?.base64url ?? "null",
-                    "clientDataJSON": credential.rawClientDataJSON.base64url,
-                    "getAuthenticatorData": [:],
-                    "getPublicKey": [:],
-                    "getPublicKeyAlgorithm": [:],
-                    "getTransports": [:],
-                ],
-                "getClientExtensionResults": [:]
-            ]
+        // ISSUE: Currently ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest doesn't support excludedCredentials.
+        // WORKAROUND: Handling excludeCredentials by plugin self.
+        // SIDE-EFFECT: Assertions may come from another device by scanning QR code, in that case, the credential SHALL NOT be saved, but there is no way to know the assertion source. This leads that credential registration fails if excludedCredentials includes the credential.
+        savePlatformPublicKeyCredential(authorization.credential)
+        return authorization.credential
+    }
+    
+    private func generateCredentialRegistrationResponse(_ credentialID: Data, _ rawClientDataJSON: Data, _ rawAttestationObject: Data? = nil) throws -> [String: Any] {
+        let response = [
+            "id": credentialID.base64url,
+            "rawId": credentialID.base64url,
+            "type": "public-key",
+            "response": [
+                "attestationObject": rawAttestationObject?.base64url ?? "null",
+                "clientDataJSON": rawClientDataJSON.base64url,
+                "getAuthenticatorData": [:] as [String : Any],
+                "getPublicKey": [:] as [String : Any],
+                "getPublicKeyAlgorithm": [:] as [String : Any],
+                "getTransports": [:] as [String : Any],
+            ] as [String : Any],
+            "getClientExtensionResults": [:] as [String : Any]
+        ] as [String : Any]
+        return response
+    }
+    
+    private func generateCredentialAssertionResponse(_ credentialID: Data, _ userID: Data, _ signature: Data, _ rawAuthenticatorData: Data, _ rawClientDataJSON: Data) throws -> [String: Any] {
+        let response = [
+            "id": credentialID.base64url,
+            "rawId": credentialID.base64url,
+            "type": "public-key",
+            "response": [
+                "authenticatorData": rawAuthenticatorData.base64url,
+                "signature": signature.base64url,
+                "userHandle": userID.base64url,
+                "clientDataJSON": rawClientDataJSON.base64url,
+            ] as [String : Any],
+            "getClientExtensionResults": [:] as [String : Any]
+        ] as [String : Any]
+        return response
+    }
+    
+    private func generateCredentialResponse(_ credential: ASAuthorizationCredential) throws -> [String: Any] {
+        var response: [String: Any] = [:]
+        switch (credential) {
+        case is ASAuthorizationPlatformPublicKeyCredentialRegistration:
+            let credential = credential as! ASAuthorizationPlatformPublicKeyCredentialRegistration
+            response = try generateCredentialRegistrationResponse(credential.credentialID, credential.rawClientDataJSON, credential.rawAttestationObject)
+        case is ASAuthorizationSecurityKeyPublicKeyCredentialRegistration:
+            let credential = credential as! ASAuthorizationSecurityKeyPublicKeyCredentialRegistration
+            response = try generateCredentialRegistrationResponse(credential.credentialID, credential.rawClientDataJSON, credential.rawAttestationObject)
+        case is ASAuthorizationPlatformPublicKeyCredentialAssertion:
+            let credential = credential as! ASAuthorizationPlatformPublicKeyCredentialAssertion
+            response = try generateCredentialAssertionResponse(credential.credentialID, credential.userID, credential.signature, credential.rawAuthenticatorData, credential.rawClientDataJSON)
+        case is ASAuthorizationSecurityKeyPublicKeyCredentialAssertion:
+            let credential = credential as! ASAuthorizationSecurityKeyPublicKeyCredentialAssertion
+            response = try generateCredentialAssertionResponse(credential.credentialID, credential.userID, credential.signature, credential.rawAuthenticatorData, credential.rawClientDataJSON)
+        default:
+            throw PluginError.unknownCredentialType(credential)
         }
-        else if let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion {
-            response = [
-                "id": credential.credentialID.base64url,
-                "rawId": credential.credentialID.base64url,
-                "type": "public-key",
-                "response": [
-                    "authenticatorData": credential.rawAuthenticatorData.base64url,
-                    "signature": credential.signature.base64url,
-                    "userHandle": credential.userID.base64url,
-                    "clientDataJSON": credential.rawClientDataJSON.base64url,
-                ],
-                "getClientExtensionResults": [:]
-            ]
+        return response
+    }
+    
+    private func requestCredentialRegistration(_ options: PublicKeyCredentialRequestOptions) throws -> String {
+        var authorizationRequests: [ASAuthorizationRequest] = []
+        switch options.authenticatorAttachment {
+        case .platform:
+            authorizationRequests.append(try createPlatformPublicKeyCredentialRegistrationRequest(options))
+        case .crossPlatform:
+            authorizationRequests.append(try createSecurityKeyPublicKeyCredentialRegistrationRequest(options))
+        default:
+            authorizationRequests.append(try createPlatformPublicKeyCredentialRegistrationRequest(options))
+            authorizationRequests.append(try createSecurityKeyPublicKeyCredentialRegistrationRequest(options))
         }
-        else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1009, userInfo: [NSLocalizedDescriptionKey: "Unknown credential type"])
+        let credential = try requestCredential(authorizationRequests)
+        let response = try generateCredentialResponse(credential)
+        return try response.jsonString
+    }
+    
+    private func requestCredentialAssertion(_ options: PublicKeyCredentialRequestOptions) throws -> String {
+        var authorizationRequests: [ASAuthorizationRequest] = []
+        switch options.authenticatorAttachment {
+        case .platform:
+            authorizationRequests.append(try createPlatformPublicKeyCredentialAssertionRequest(options))
+        case .crossPlatform:
+            authorizationRequests.append(try createSecurityKeyPublicKeyCredentialAssertionRequest(options))
+        default:
+            authorizationRequests.append(try createPlatformPublicKeyCredentialAssertionRequest(options))
+            /* ISSUE:
+             * iOS(16.4.1) will show QR code for Passkeys if adding both PlatformPublicKeyCredentialAssertionRequest and
+             * SecurityKeyPublicKeyCredentialAssertionRequest into authorizationRequests and allowCredentials is not empty.
+             * It seems that allowCredentials cannot be found in the platform credeintials, but it will work if removing
+             * SecurityKeyPublicKeyCredentialAssertionRequest from authorizationRequests, that means allowCredentials can be found.
+             */
+            // WORKAROUND: Adding SecurityKeyPublicKeyCredentialAssertionRequest if there is no any platform credeintial can be found in allowCredentials. But the saved platform credentials are not all on the device, due to there is no way can get all platform credentials from iOS.
+            if findPlatformCredentials(options.allowCredentials).count == 0 {
+                authorizationRequests.append(try createSecurityKeyPublicKeyCredentialAssertionRequest(options))
+            }
         }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: response), let jsonString = String(data: jsonData, encoding: .utf8) else {
-            throw NSError(domain: "FlutterPasskeyPlugin", code: 0x1010, userInfo: [NSLocalizedDescriptionKey: "Unknown error"])
-        }
-        return jsonString
+        let credential = try requestCredential(authorizationRequests)
+        let response = try generateCredentialResponse(credential)
+        return try response.jsonString
     }
     
     private func createCredential(_ options: String, _ callback: @escaping (_ credential: String?, _ error: Error?) -> Void) {
         Task {
             do {
-                let credential = try requestCredential(options, true)
+                let credential = try requestCredentialRegistration(PublicKeyCredentialRequestOptions(options))
                 callback(credential, nil)
             } catch {
                 callback(nil, error)
@@ -148,7 +318,7 @@ public class FlutterPasskeyPlugin: NSObject, FlutterPlugin {
     private func getCredential(_ options: String, _ callback: @escaping (_ credential: String?, _ error: Error?) -> Void) {
         Task {
             do {
-                let credential = try requestCredential(options, false)
+                let credential = try requestCredentialAssertion(PublicKeyCredentialRequestOptions(options))
                 callback(credential, nil)
             } catch {
                 callback(nil, error)
@@ -170,31 +340,52 @@ public class FlutterPasskeyPlugin: NSObject, FlutterPlugin {
             if let args = call.arguments as? Dictionary<String, Any>, let options = args["options"] as? String {
                 createCredential(options) { credential, error in
                     if let err = error {
-                        result(FlutterError(code: "\((err as NSError).code)", message: err.localizedDescription, details: nil))
+                        result(FlutterError(code: String(describing: type(of: err)), message: "\(err)", details: nil))
                         return
                     }
                     result(credential!)
                 }
             }
             else {
-                result(FlutterError(code: "\(0x1001)", message: "Options not found", details: nil))
+                result(FlutterError(code: "CreateCredentialError", message: "Options not found", details: nil))
             }
         case "getCredential":
             if let args = call.arguments as? Dictionary<String, Any>, let options = args["options"] as? String {
                 getCredential(options) { credential, error in
                     if let err = error {
-                        result(FlutterError(code: "\((err as NSError).code)", message: err.localizedDescription, details: nil))
+                        result(FlutterError(code: String(describing: type(of: err)), message: "\(err)", details: nil))
                         return
                     }
                     result(credential!)
                 }
             }
             else {
-                result(FlutterError(code: "\(0x1001)", message: "Options not found", details: nil))
+                result(FlutterError(code: "GetCredentialError", message: "Options not found", details: nil))
             }
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+}
+
+extension FlutterPasskeyPlugin.PluginError: CustomStringConvertible {
+    var description: String {
+        switch self {
+        case .unknownError:
+            return "Unknown error."
+        case .notFound(let name):
+            return "\(name) not found."
+        case .unknownCredentialType(let object):
+            return "Unknown credential type \(String(describing: type(of: object)))."
+        case .excludedCredentialExists:
+            return "One of the excluded credentials exists on the local device."
+        }
+    }
+}
+
+extension FlutterPasskeyPlugin.PluginError: LocalizedError {
+    private var errorDescription: String {
+        return self.description
     }
 }
 
@@ -204,23 +395,20 @@ extension FlutterViewController: ASAuthorizationControllerPresentationContextPro
     }
 }
 
-extension String {
-    var jsonObject: [String: Any]? {
-        guard let data = self.data(using: .utf8), let jsonObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        return jsonObj
-    }
-    
-    var base64urlDecoded: Data? {
-        var base64 = self.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        if base64.count % 4 != 0 { base64.append(String(repeating: "=", count: 4 - base64.count % 4)) }
-        return Data(base64Encoded: base64)
-    }
-}
-
 extension Data {
     var base64url: String {
         self.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+}
+
+extension Dictionary where Key == String {
+    var jsonString: String {
+        get throws {
+            let data = try JSONSerialization.data(withJSONObject: self)
+            guard let jsonString = String(data: data, encoding: .utf8) else {
+                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid JSON data.", underlyingError: nil))
+            }
+            return jsonString
+        }
     }
 }
