@@ -25,7 +25,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 31
+    compileSdkVersion 34
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -47,9 +47,9 @@ android {
 
 dependencies {
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1"
-    implementation "androidx.credentials:credentials:1.0.0-alpha03"
+    implementation "androidx.credentials:credentials:1.2.0-rc01"
 
     // optional - needed for credentials support from play services, for devices running
     // Android 13 and below.
-    implementation "androidx.credentials:credentials-play-services-auth:1.0.0-alpha03"
+    implementation "androidx.credentials:credentials-play-services-auth:1.2.0-rc01"
 }

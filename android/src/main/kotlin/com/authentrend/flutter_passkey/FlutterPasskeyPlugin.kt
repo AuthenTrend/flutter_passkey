@@ -49,8 +49,8 @@ class FlutterPasskeyPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, Vie
       try {
         val credentialManager = CredentialManager.create(activity!!)
         val result = credentialManager.createCredential(
+          context = activity!!,
           request = createPublicKeyCredentialRequest,
-          activity = activity!!,
         )
         val credential = result as CreatePublicKeyCredentialResponse
         callback(credential.registrationResponseJson, null)
@@ -66,15 +66,14 @@ class FlutterPasskeyPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, Vie
     }
     JSONObject(options) // check if options is a valid json string
     val getPublicKeyCredentialOption = GetPublicKeyCredentialOption(
-      requestJson = options,
-      preferImmediatelyAvailableCredentials = false
+      requestJson = options
     )
     viewModelScope.launch {
       try {
         val credentialManager = CredentialManager.create(activity!!)
         val result = credentialManager.getCredential(
+          context = activity!!,
           request = GetCredentialRequest(listOf(getPublicKeyCredentialOption)),
-          activity = activity!!,
         )
         val credential = result.credential as PublicKeyCredential
         callback(credential.authenticationResponseJson, null)

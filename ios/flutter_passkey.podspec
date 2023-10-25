@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_passkey'
-  s.version          = '1.0.3'
+  s.version          = '1.0.4'
   s.summary          = 'A Flutter plugin for Passkey.'
   s.description      = <<-DESC
 Flutter plugin for using Passkey easily.
