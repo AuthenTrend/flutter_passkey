@@ -11,7 +11,7 @@ class FlutterPasskey {
         return false;
       }
       final list = osVersion.split(' ');
-      final version = int.tryParse(list[1].split('.').first) ?? 0;
+      final version = int.tryParse(list.last.split('.').first) ?? 0;
       switch (list.first) {
         case 'iOS':
           return (version >= 15);

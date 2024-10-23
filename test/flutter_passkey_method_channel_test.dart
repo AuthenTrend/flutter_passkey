@@ -1,19 +1,27 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_passkey/flutter_passkey_method_channel.dart';
 
 void main() {
-  const MethodChannel channel = MethodChannel('flutter_passkey');
-
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  MethodChannelFlutterPasskey platform = MethodChannelFlutterPasskey();
+  const MethodChannel channel = MethodChannel('flutter_passkey');
+
   setUp(() {
-    channel.setMockMethodCallHandler((MethodCall methodCall) async {
-      return '42';
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (MethodCall methodCall) async {
+        return '42';
+      },
+    );
   });
 
   tearDown(() {
-    channel.setMockMethodCallHandler(null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
   });
 
+  test('getPlatformVersion', () async {
+    expect(await platform.getPlatformVersion(), '42');
+  });
 }

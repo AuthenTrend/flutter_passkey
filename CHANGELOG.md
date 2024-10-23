@@ -1,3 +1,8 @@
+
+* Improve testing
+* Update documentation
+* Upgrade gradle using Flutter plugin template's way
+
 ## 1.0.5
 
 * Upgrade androidx.credentials version to 1.2.2

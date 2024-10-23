@@ -1,16 +1,16 @@
-group 'com.authentrend.flutter_passkey'
-version '1.0-SNAPSHOT'
+group = "com.authentrend.flutter_passkey"
+version = "1.0-SNAPSHOT"
 
 buildscript {
-    ext.kotlin_version = '1.9.23'
+    ext.kotlin_version = "1.8.22"
     repositories {
         google()
         mavenCentral()
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.2'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath("com.android.tools.build:gradle:8.1.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
 }
 
@@ -21,35 +21,60 @@ allprojects {
     }
 }
 
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
 
 android {
-    compileSdkVersion 34
+    if (project.android.hasProperty("namespace")) {
+        namespace = "com.authentrend.flutter_passkey"
+    }
+
+    compileSdk = 34
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = JavaVersion.VERSION_1_8
     }
 
     sourceSets {
-        main.java.srcDirs += 'src/main/kotlin'
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
     }
 
     defaultConfig {
-        minSdkVersion 28
+        minSdk = 21
     }
-}
 
-dependencies {
-    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0"
-    implementation "androidx.credentials:credentials:1.2.2"
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
 
-    // optional - needed for credentials support from play services, for devices running
-    // Android 13 and below.
-    implementation "androidx.credentials:credentials-play-services-auth:1.2.2"
+    dependencies {
+        implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+        implementation("androidx.credentials:credentials:1.2.2")
+        // optional - needed for credentials support from play services, for devices running
+        // Android 13 and below.
+        implementation("androidx.credentials:credentials-play-services-auth:1.2.2")
+        testImplementation("org.jetbrains.kotlin:kotlin-test")
+        testImplementation("org.mockito:mockito-core:5.0.0")
+    }
+
+    testOptions {
+        unitTests.all {
+            useJUnitPlatform()
+
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
 }

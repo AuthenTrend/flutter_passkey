@@ -1,10 +1,10 @@
 # flutter_passkey
 
-A Flutter plugin for Passkey.
+Use passkeys authentication for Android and iOS.
 
 | Android | iOS | MacOS | Web | Linux | Windows |
-| :-----: | :-: | :---: | :-: | :---: | :-----: |
-|    V    |  V  |   X   |  X  |   X   |    X    |
+|:-------:|:---:|:-----:|:---:|:-----:|:-------:|
+|   ✅     |  ✅ |   ❌   |  ❌  |   ❌  |    ❌    |
 
 ## Usage
 
